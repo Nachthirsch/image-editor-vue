@@ -1,28 +1,45 @@
 <script setup>
-import { ref, watch, onMounted, defineExpose } from "vue";
+import { ref, watch, onMounted, onUnmounted, defineExpose } from "vue";
 import { usePhotoStore } from "../../stores/photoStore";
 
 const photoStore = usePhotoStore();
 const canvasRef = ref(null);
 const canvasContext = ref(null);
 const imageObj = ref(null);
+const imageLoaded = ref(false); // Track if image is fully loaded
 const tempCanvas = ref(document.createElement("canvas"));
-const tempCtx = ref(tempCanvas.value.getContext("2d"));
+const tempCtx = ref(null); // Initialize this later to ensure proper context
 
 // Function to draw the image on the canvas with all filters applied
 const drawImage = () => {
-  if (!canvasRef.value || !canvasContext.value || !imageObj.value) return;
+  if (!canvasRef.value || !canvasContext.value || !imageObj.value || !imageLoaded.value) {
+    console.log("Cannot draw: missing required elements or image not loaded");
+    return;
+  }
 
   // Get canvas dimensions
   const canvas = canvasRef.value;
   const ctx = canvasContext.value;
 
+  // Ensure we have a valid temp context
+  if (!tempCtx.value) {
+    tempCtx.value = tempCanvas.value.getContext("2d");
+    if (!tempCtx.value) return; // Exit if we can't get a context
+  }
+
   // Resize canvas to match image proportions while maintaining reasonable display size
-  const maxWidth = canvas.parentElement.clientWidth;
+  const maxWidth = canvas.parentElement?.clientWidth || 800;
   const maxHeight = 500; // Maximum height
 
-  let width = imageObj.value.width;
-  let height = imageObj.value.height;
+  // Ensure image has valid dimensions
+  let width = imageObj.value.naturalWidth || 0;
+  let height = imageObj.value.naturalHeight || 0;
+
+  // Validate image dimensions
+  if (width <= 0 || height <= 0) {
+    console.error("Invalid image dimensions:", width, height);
+    return;
+  }
 
   // Calculate aspect ratio
   const aspectRatio = width / height;
@@ -38,6 +55,10 @@ const drawImage = () => {
     width = height * aspectRatio;
   }
 
+  // Ensure dimensions are at least 1px
+  width = Math.max(1, Math.floor(width));
+  height = Math.max(1, Math.floor(height));
+
   // Set canvas dimensions
   canvas.width = width;
   canvas.height = height;
@@ -50,21 +71,28 @@ const drawImage = () => {
   ctx.clearRect(0, 0, width, height);
   tempCtx.value.clearRect(0, 0, width, height);
 
-  // First, draw the image with basic CSS filters to the temp canvas
-  tempCtx.value.filter = photoStore.filterStyle;
-  tempCtx.value.drawImage(imageObj.value, 0, 0, width, height);
+  try {
+    // First, draw the image with basic CSS filters to the temp canvas
+    tempCtx.value.filter = photoStore.filterStyle;
+    tempCtx.value.drawImage(imageObj.value, 0, 0, width, height);
 
-  // Get image data from temp canvas for pixel manipulation
-  const imageData = tempCtx.value.getImageData(0, 0, width, height);
+    // Validate that tempCanvas has content before proceeding
+    if (width > 0 && height > 0) {
+      // Get image data from temp canvas for pixel manipulation
+      const imageData = tempCtx.value.getImageData(0, 0, width, height);
 
-  // Apply advanced filters that require pixel manipulation
-  applyAdvancedFilters(imageData);
+      // Apply advanced filters that require pixel manipulation
+      applyAdvancedFilters(imageData);
 
-  // Put the processed image data back to the main canvas
-  ctx.putImageData(imageData, 0, 0);
+      // Put the processed image data back to the main canvas
+      ctx.putImageData(imageData, 0, 0);
 
-  // Apply post-processing effects that need to be drawn on top
-  applyPostEffects(ctx, width, height);
+      // Apply post-processing effects that need to be drawn on top
+      applyPostEffects(ctx, width, height);
+    }
+  } catch (error) {
+    console.error("Error drawing image:", error);
+  }
 };
 
 // Apply advanced filters that require pixel-level manipulation
@@ -324,15 +352,39 @@ const hslToRgb = (h, s, l) => {
 watch(
   () => photoStore.originalImage,
   (newImage) => {
-    if (!newImage) return;
+    if (!newImage) {
+      imageLoaded.value = false;
+      return;
+    }
+
+    // Reset image loaded flag
+    imageLoaded.value = false;
 
     // Create a new image object
     imageObj.value = new Image();
 
+    // Handle loading errors
+    imageObj.value.onerror = (err) => {
+      console.error("Error loading image:", err);
+      imageLoaded.value = false;
+    };
+
     // Set up onload handler
     imageObj.value.onload = () => {
-      drawImage();
+      // Check if image has valid dimensions
+      if (imageObj.value.naturalWidth > 0 && imageObj.value.naturalHeight > 0) {
+        imageLoaded.value = true;
+        console.log("Image loaded successfully with dimensions:", imageObj.value.naturalWidth, "x", imageObj.value.naturalHeight);
+        // Wait for next tick to ensure DOM is updated
+        setTimeout(drawImage, 0);
+      } else {
+        console.error("Image loaded but has invalid dimensions");
+        imageLoaded.value = false;
+      }
     };
+
+    // Set the image crossOrigin attribute for CORS issues
+    imageObj.value.crossOrigin = "Anonymous";
 
     // Set the image source
     imageObj.value.src = newImage;
@@ -344,7 +396,9 @@ watch(
 watch(
   () => photoStore.filters,
   () => {
-    drawImage();
+    if (imageLoaded.value) {
+      drawImage();
+    }
   },
   { deep: true }
 );
@@ -354,18 +408,41 @@ onMounted(() => {
   if (canvasRef.value) {
     canvasContext.value = canvasRef.value.getContext("2d");
 
+    // Initialize temp context
+    tempCtx.value = tempCanvas.value.getContext("2d");
+
     // If we already have an image, draw it
     if (photoStore.originalImage) {
       imageObj.value = new Image();
+      imageObj.value.crossOrigin = "Anonymous";
+
       imageObj.value.onload = () => {
-        drawImage();
+        if (imageObj.value.naturalWidth > 0 && imageObj.value.naturalHeight > 0) {
+          imageLoaded.value = true;
+          drawImage();
+        }
       };
+
+      imageObj.value.onerror = (err) => {
+        console.error("Error loading existing image:", err);
+      };
+
       imageObj.value.src = photoStore.originalImage;
     }
   }
 
   // Handle window resize
-  window.addEventListener("resize", drawImage);
+  const handleResize = () => {
+    // Add a small delay to ensure DOM measurements are complete
+    setTimeout(drawImage, 100);
+  };
+
+  window.addEventListener("resize", handleResize);
+
+  // Clean up event listener when component is unmounted
+  onUnmounted(() => {
+    window.removeEventListener("resize", handleResize);
+  });
 });
 
 // Expose the canvas element to parent components

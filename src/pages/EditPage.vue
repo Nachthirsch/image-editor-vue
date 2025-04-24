@@ -49,6 +49,14 @@ onMounted(() => {
         <!-- Upload Component -->
         <ImageUploader />
 
+        <!-- Mobile Preview - Now positioned above tabs on mobile -->
+        <div v-if="photoStore.hasImage" class="mt-4 mb-4 lg:hidden">
+          <h3 class="text-sm font-semibold mb-2 text-gray-600">Image Preview</h3>
+          <div class="w-full max-h-48 overflow-hidden flex justify-center items-center border rounded-md">
+            <img :src="photoStore.currentImage" alt="Preview" class="max-w-full max-h-48 object-contain" />
+          </div>
+        </div>
+
         <!-- Tabs for different editing modes -->
         <div class="mt-6 border-b border-gray-200">
           <ul class="flex space-x-4">
