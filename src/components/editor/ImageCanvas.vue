@@ -89,6 +89,11 @@ const drawImage = () => {
 
       // Apply post-processing effects that need to be drawn on top
       applyPostEffects(ctx, width, height);
+      
+      // Update photoStore.currentImage for mobile preview
+      if (canvasRef.value) {
+        photoStore.updateCurrentImage(canvasRef.value.toDataURL('image/png'));
+      }
     }
   } catch (error) {
     console.error("Error drawing image:", error);

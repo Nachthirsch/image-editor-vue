@@ -5,6 +5,7 @@ export const usePhotoStore = defineStore("photo", {
     // Original image and edited image URLs
     originalImage: null,
     editedImage: null,
+    currentImage: null, // Added for mobile preview
 
     // Image filter settings
     filters: {
@@ -105,12 +106,18 @@ export const usePhotoStore = defineStore("photo", {
     setOriginalImage(imageData) {
       this.originalImage = imageData;
       this.editedImage = imageData;
+      this.currentImage = imageData; // Update currentImage as well
 
       // Reset filters
       this.resetFilters();
 
       // Add to history
       this.addToHistory();
+    },
+
+    // Update current image for preview
+    updateCurrentImage(imageData) {
+      this.currentImage = imageData;
     },
 
     // Reset all filters to default values

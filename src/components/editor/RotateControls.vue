@@ -73,6 +73,9 @@ const applyRotation = () => {
 
   // Update the image in the store
   photoStore.setOriginalImage(rotatedImageData);
+  
+  // Ensure currentImage is also updated
+  photoStore.updateCurrentImage(rotatedImageData);
 
   // Reset rotation angle
   rotationAngle.value = 0;

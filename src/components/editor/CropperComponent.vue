@@ -23,6 +23,9 @@ const applyCrop = () => {
 
     // Update the image in the store
     photoStore.setOriginalImage(croppedImageData);
+    
+    // Ensure currentImage is also updated
+    photoStore.updateCurrentImage(croppedImageData);
   }
 };
 
